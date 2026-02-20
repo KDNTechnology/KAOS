@@ -1,0 +1,150 @@
+KAOS ISA v0.1 — The Minimal Sovereign Instruction Set
+This is the smallest meaningful instruction set that can run your universe.
+
+Each instruction is 1 byte opcode + 2 byte arguments:
+
+Code
+[ OPCODE | ARG0 | ARG1 ]
+OPCODE = verb
+
+ARG0 = target state machine
+
+ARG1 = value / duration / channel
+
+Total: 3 bytes per instruction.
+
+⭐ Opcode Table (KAOS ISA v0.1)
+Opcode	Mnemonic	Meaning
+0x00	NOP	Do nothing
+0x01	PULSE	Emit a pulse on output channel
+0x02	SET_STATE	Set state machine to value
+0x03	REPORT	Emit state over RF/UART
+0x04	ACK	Acknowledge last event
+0x05	WAIT	Delay for ARG1 ms
+0x06	BRANCH_EQ	If state == ARG1, jump to ARG0
+0x07	BRANCH_NE	If state != ARG1, jump to ARG0
+0x08	END	Stop program (rare)
+This is enough to express:
+
+beacon mode
+
+wearable mode
+
+guardian mode
+
+bridge mode
+
+any future form
+
+All as programs, not firmware.
+
+⭐ Binary Encoding (the actual 0s and 1s)
+Example instruction:
+
+Code
+PULSE machine 0 for duration 16
+Encoding:
+
+Code
+OPCODE = 0x01
+ARG0   = 0x00
+ARG1   = 0x10
+Raw bytes in flash:
+
+Code
+01 00 10
+In binary:
+
+Code
+00000001 00000000 00010000
+That is literally what the microcontroller fetches and executes.
+
+⭐ Hardware Decoder (the “CPU” of KAOS)
+This is the combinational logic that turns opcodes into micro‑operations.
+
+Input:
+opcode[7:0]
+
+arg0[7:0]
+
+arg1[7:0]
+
+state_ram
+
+io_lines
+
+pc
+
+Output:
+next_state
+
+io_control
+
+timer_control
+
+pc_next
+
+Truth Table (partial)
+Opcode	Micro‑Operation
+0x00 NOP	pc_next = pc + 3
+0x01 PULSE	io_out = 1 for arg1 ms
+0x02 SET_STATE	state[arg0] = arg1
+0x03 REPORT	uart_tx = state[arg0]
+0x04 ACK	io_ack = 1
+0x05 WAIT	timer_start(arg1)
+0x06 BRANCH_EQ	if state[arg0] == arg1: pc_next = arg0
+0x07 BRANCH_NE	if state[arg0] != arg1: pc_next = arg0
+0x08 END	halt = 1
+This is a real CPU, but with only the verbs you need.
+
+⭐ Fetch–Decode–Execute Cycle (KAOS Core Loop)
+This is the hardware loop that runs forever:
+
+Code
+FETCH:
+    opcode = MEM[pc]
+    arg0   = MEM[pc+1]
+    arg1   = MEM[pc+2]
+
+DECODE:
+    control_signals = decoder(opcode)
+
+EXECUTE:
+    perform micro-ops based on control_signals
+
+UPDATE PC:
+    pc = pc_next
+This is the KAOS micro‑architecture.
+
+⭐ Example: BEACON MODE Program in KAOS ISA
+Beacon mode is just a tiny program:
+
+Code
+00: 01 00 10   ; PULSE machine 0 for 16 ms
+03: 05 00 64   ; WAIT 100 ms
+06: 07 00 00   ; BRANCH_NE to 00 (always true)
+Binary:
+
+Code
+01 00 10  05 00 64  07 00 00
+This is the entire beacon behavior encoded as 9 bytes.
+
+Your hardware executes it forever.
+
+⭐ What you have now
+You now possess:
+
+A real instruction set
+
+A real binary encoding
+
+A real hardware decoder
+
+A real micro‑architecture
+
+A real program (beacon mode)
+
+This is no longer “software on hardware.”
+This is hardware that speaks your verbs.
+
+This is KAOS ISA v0.1.

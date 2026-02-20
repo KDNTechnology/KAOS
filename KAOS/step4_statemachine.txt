@@ -1,0 +1,130 @@
+state_machine.h — overview
+Purpose:  
+A minimal deterministic state machine engine:
+
+each machine has a single uint8_t state
+
+transitions are defined as (current_state, verb) → next_state
+
+the kernel calls state_machine_apply() for each event
+
+no dynamic memory, no modules, no Linux
+
+This is the constitutional heart of MDOS‑0.
+
+c
+// state_machine.h
+#ifndef STATE_MACHINE_H
+#define STATE_MACHINE_H
+
+#include <stdint.h>
+#include "verbs.h"
+#include "identity.h"
+#include "event_log.h"
+
+// Maximum number of state machines on device
+#define MAX_STATE_MACHINES 8
+
+typedef struct {
+    uint8_t state;   // current state
+} StateMachine;
+
+// A single transition rule
+typedef struct {
+    uint8_t current_state;
+    uint8_t verb_id;
+    uint8_t next_state;
+} Transition;
+
+// Initialize all state machines to state 0
+void state_machine_init(void);
+
+// Register a transition table for a given machine
+void state_machine_set_transitions(uint8_t machine_index,
+                                   const Transition* table,
+                                   uint8_t count);
+
+// Apply an event to the appropriate machine
+void state_machine_apply(const Event* e);
+
+#endif // STATE_MACHINE_H
+state_machine.c — implementation
+This file contains:
+
+static state machine array
+
+static transition tables
+
+a simple linear scan for transitions (fast enough for 4 KB nodes)
+
+verb permission enforcement via verbs_role_allowed()
+
+c
+// state_machine.c
+#include "state_machine.h"
+
+static StateMachine machines[MAX_STATE_MACHINES];
+
+// Each machine gets its own transition table
+typedef struct {
+    const Transition* table;
+    uint8_t count;
+} TransitionTable;
+
+static TransitionTable transition_tables[MAX_STATE_MACHINES];
+
+void state_machine_init(void) {
+    for (uint8_t i = 0; i < MAX_STATE_MACHINES; i++) {
+        machines[i].state = 0;
+        transition_tables[i].table = 0;
+        transition_tables[i].count = 0;
+    }
+}
+
+void state_machine_set_transitions(uint8_t machine_index,
+                                   const Transition* table,
+                                   uint8_t count) {
+    if (machine_index >= MAX_STATE_MACHINES) return;
+    transition_tables[machine_index].table = table;
+    transition_tables[machine_index].count = count;
+}
+
+void state_machine_apply(const Event* e) {
+    uint8_t idx = e->target;
+    if (idx >= MAX_STATE_MACHINES) return;
+
+    // Permission check
+    if (!verbs_role_allowed(e->verb, identity_get_role())) {
+        return; // forbidden verb → ignore
+    }
+
+    StateMachine* sm = &machines[idx];
+    const TransitionTable* tt = &transition_tables[idx];
+
+    if (!tt->table || tt->count == 0) return;
+
+    // Linear scan for matching transition
+    for (uint8_t i = 0; i < tt->count; i++) {
+        const Transition* t = &tt->table[i];
+
+        if (t->current_state == sm->state &&
+            t->verb_id == e->verb) {
+
+            sm->state = t->next_state;
+            return;
+        }
+    }
+}
+If this matches your vision, the next file is kernel.c / kernel.h — the beating heart that ties:
+
+HAL
+
+identity
+
+verbs
+
+event log
+
+state machines
+
+into the MDOS‑0 main loop.

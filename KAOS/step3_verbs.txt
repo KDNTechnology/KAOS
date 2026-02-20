@@ -1,0 +1,107 @@
+verbs.h — overview
+Purpose:  
+Define the universal verb table, role permissions, and the tiny API for:
+
+initializing the verb universe
+
+pruning verbs based on chosen form
+
+checking whether a role may perform a verb
+
+This is constitutional enforcement at MDOS‑0.
+
+c
+// verbs.h
+#ifndef VERBS_H
+#define VERBS_H
+
+#include <stdint.h>
+#include "identity.h"
+
+// Maximum verbs the kernel can hold.
+// Tune per device; 16 is enough for most forms.
+#define MAX_VERBS 16
+
+typedef struct {
+    uint8_t id;                 // verb ID
+    uint8_t allowed_roles_mask; // bitmask: which roles may use this verb
+    uint8_t active;             // 1 = enabled, 0 = pruned
+} Verb;
+
+// Initialize the full universe of verbs
+void verbs_init_universe(void);
+
+// Disable all verbs not needed for the chosen form
+void verbs_prune_for_role(DeviceRole role);
+
+// Check if a role may perform a verb
+uint8_t verbs_role_allowed(uint8_t verb_id, DeviceRole role);
+
+// Get pointer to verb table (for state machine use)
+Verb* verbs_get_table(void);
+
+#endif // VERBS_H
+verbs.c — implementation
+This includes:
+
+a static verb table
+
+a simple universe of example verbs
+
+pruning logic
+
+permission checking
+
+c
+// verbs.c
+#include "verbs.h"
+
+// Example verb IDs
+enum {
+    VERB_PING = 0,
+    VERB_PULSE = 1,
+    VERB_SET_STATE = 2,
+    VERB_REPORT = 3,
+    VERB_ACK = 4,
+    VERB_MAX = 5
+};
+
+static Verb verb_table[MAX_VERBS];
+
+void verbs_init_universe(void) {
+    // Clear table
+    for (uint8_t i = 0; i < MAX_VERBS; i++) {
+        verb_table[i].id = 0xFF;
+        verb_table[i].allowed_roles_mask = 0;
+        verb_table[i].active = 0;
+    }
+
+    // Define the universe
+    verb_table[VERB_PING] = (Verb){ VERB_PING,  (1 << ROLE_BEACON) | (1 << ROLE_GUARDIAN), 1 };
+    verb_table[VERB_PULSE] = (Verb){ VERB_PULSE, (1 << ROLE_BEACON) | (1 << ROLE_WEARABLE), 1 };
+    verb_table[VERB_SET_STATE] = (Verb){ VERB_SET_STATE, (1 << ROLE_GUARDIAN), 1 };
+    verb_table[VERB_REPORT] = (Verb){ VERB_REPORT, (1 << ROLE_WEARABLE) | (1 << ROLE_BRIDGE), 1 };
+    verb_table[VERB_ACK] = (Verb){ VERB_ACK, (1 << ROLE_GUARDIAN) | (1 << ROLE_BRIDGE), 1 };
+}
+
+void verbs_prune_for_role(DeviceRole role) {
+    uint8_t mask = (1 << role);
+
+    for (uint8_t i = 0; i < VERB_MAX; i++) {
+        if ((verb_table[i].allowed_roles_mask & mask) == 0) {
+            verb_table[i].active = 0; // disable
+        }
+    }
+}
+
+uint8_t verbs_role_allowed(uint8_t verb_id, DeviceRole role) {
+    if (verb_id >= VERB_MAX) return 0;
+    if (!verb_table[verb_id].active) return 0;
+
+    uint8_t mask = (1 << role);
+    return (verb_table[verb_id].allowed_roles_mask & mask) != 0;
+}
+
+Verb* verbs_get_table(void) {
+    return verb_table;
+}

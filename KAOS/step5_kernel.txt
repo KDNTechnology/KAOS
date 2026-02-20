@@ -1,0 +1,126 @@
+kernel.h — overview
+Purpose:  
+Expose the two core lifecycle functions:
+
+mdos0_init() — bring up identity, verbs, event log, state machines
+
+mdos0_loop() — the eternal constitutional loop
+
+This file defines the shape of the kernel.
+
+c
+// kernel.h
+#ifndef KERNEL_H
+#define KERNEL_H
+
+#include <stdint.h>
+
+// Initialize MDOS-0 kernel (after hal_init)
+void mdos0_init(void);
+
+// Run configuration loop (operator chooses form)
+void mdos0_config_loop(void);
+
+// Main constitutional loop (never returns)
+void mdos0_loop(void);
+
+#endif // KERNEL_H
+kernel.c — implementation
+This is the real kernel.
+This is the thing that replaces Linux as your minimal 0.
+
+It:
+
+Initializes all subsystems
+
+Runs the configuration loop
+
+Enters the eternal constitutional loop
+
+Never yields control to anything else
+
+c
+// kernel.c
+#include "kernel.h"
+#include "hal/hal.h"
+#include "identity.h"
+#include "verbs.h"
+#include "event_log.h"
+#include "state_machine.h"
+
+// Forward declarations
+static void mdos0_normalize_events(void);
+static void mdos0_apply_events(void);
+
+void mdos0_init(void) {
+    identity_init();
+    verbs_init_universe();
+    event_log_init();
+    state_machine_init();
+}
+
+void mdos0_config_loop(void) {
+    // Simple blocking loop:
+    // - read IO
+    // - operator selects role
+    // - prune verbs
+    // - lock identity
+
+    while (identity_get_role() == ROLE_UNCONFIGURED) {
+        hal_read_io();
+
+        // Example: operator sets role via GPIO or serial
+        DeviceRole chosen = hal_get_config_role();
+        if (chosen != ROLE_UNCONFIGURED) {
+            identity_set_role(chosen);
+            verbs_prune_for_role(chosen);
+        }
+
+        // Example: operator sets ID
+        uint32_t id = hal_get_config_id();
+        if (id != 0) {
+            identity_set_id(id);
+        }
+
+        hal_write_io();
+    }
+}
+
+void mdos0_loop(void) {
+    for (;;) {
+        hal_read_io();            // raw pulses → input flags
+        mdos0_normalize_events(); // input flags → Events → event_log_append()
+        mdos0_apply_events();     // Events → state machines
+        hal_write_io();           // state → RF/pins/LEDs
+    }
+}
+
+static void mdos0_normalize_events(void) {
+    // Example normalization:
+    // If HAL reports a pulse, create an Event
+    if (hal_pulse_detected()) {
+        Event e;
+        e.role = identity_get_role();
+        e.verb = hal_get_pulse_verb();
+        e.target = hal_get_pulse_target();
+        e.timestamp = hal_now_ms();
+        event_log_append(&e);
+    }
+
+    // Add timer tick events if needed
+    if (hal_timer_tick()) {
+        Event e;
+        e.role = identity_get_role();
+        e.verb = VERB_PING; // example
+        e.target = 0;
+        e.timestamp = hal_now_ms();
+        event_log_append(&e);
+    }
+}
+
+static void mdos0_apply_events(void) {
+    Event e;
+    while (event_log_pop(&e) == 0) {
+        state_machine_apply(&e);
+    }
+}

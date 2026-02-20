@@ -1,0 +1,88 @@
+Here’s the top of the pyramid: main.c — the thing that actually runs on silicon and hands control to your Kernel Abstracted Origin System.
+
+This is the file that a bootloader jumps into.
+From here on, Linux does not exist.
+
+main.c — overview
+Purpose:  
+Wire the hardware abstraction layer (HAL) and the MDOS‑0 kernel into a single, minimal executable:
+
+Initialize hardware (hal_init)
+
+Initialize kernel (mdos0_init)
+
+Run configuration loop (mdos0_config_loop)
+
+Enter eternal main loop (mdos0_loop)
+
+c
+// main.c
+#include "hal/hal.h"
+#include "kernel.h"
+
+int main(void) {
+    // Board-specific hardware init
+    hal_init();
+
+    // Bring up MDOS-0 kernel subsystems
+    mdos0_init();
+
+    // One-time configuration: role, ID, form
+    mdos0_config_loop();
+
+    // Eternal constitutional loop
+    mdos0_loop();
+
+    // We never return
+    return 0;
+}
+hal.h — overview
+To keep the picture complete, here’s the abstract HAL interface the kernel expects.
+Each board (Raspberry Pi Pico, ESP32, STM32, etc.) implements these functions in its own hal_*.c.
+
+c
+// hal/hal.h
+#ifndef HAL_H
+#define HAL_H
+
+#include <stdint.h>
+#include "identity.h"
+
+// Hardware init: clocks, GPIO, timers, RF, etc.
+void hal_init(void);
+
+// Time in milliseconds since boot
+uint32_t hal_now_ms(void);
+
+// IO cycle: read raw hardware into internal flags/buffers
+void hal_read_io(void);
+
+// IO cycle: drive hardware from current state
+void hal_write_io(void);
+
+// --- Config-time helpers ---
+
+// Read operator-chosen role (e.g., via buttons, serial, DIP switches)
+// Return ROLE_UNCONFIGURED if not yet chosen
+DeviceRole hal_get_config_role(void);
+
+// Read operator-chosen ID (e.g., via serial or fixed pattern)
+// Return 0 if not yet set
+uint32_t hal_get_config_id(void);
+
+// --- Runtime helpers used by kernel normalization ---
+
+// Did we detect a pulse this cycle?
+uint8_t hal_pulse_detected(void);
+
+// Map current pulse to a verb ID
+uint8_t hal_get_pulse_verb(void);
+
+// Map current pulse to a target state machine index
+uint8_t hal_get_pulse_target(void);
+
+// Did a timer tick event occur this cycle?
+uint8_t hal_timer_tick(void);
+
+#endif // HAL_H
+Each concrete board then implements hal_init, hal_now_ms, hal_read_io, etc., in its own hal_<board>.c.

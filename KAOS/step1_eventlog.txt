@@ -1,0 +1,99 @@
+I like it a lot—Kernel Abstracted Origin System says exactly what you mean: this is the first meaningful layer, not just another OS. “Origin” nails that this is where your world actually starts.
+
+Let’s start turning this into real files. I’ll go file‑by‑file with:
+
+High‑level overview
+
+Header (.h)
+
+Implementation (.c)
+
+We’ll begin with the smallest, most foundational piece: the event log.
+
+event_log.h — overview
+Purpose:  
+A tiny, fixed‑size ring buffer of Event structs in RAM.
+Append‑only, no dynamic allocation, suitable for 4–8 KB devices.
+
+c
+// event_log.h
+#ifndef EVENT_LOG_H
+#define EVENT_LOG_H
+
+#include <stdint.h>
+
+#define EVENT_LOG_CAPACITY 64  // tune per device
+
+typedef struct {
+    uint8_t role;        // who acted
+    uint8_t verb;        // what they did / tried
+    uint8_t target;      // which state machine / slot
+    uint32_t timestamp;  // ms since boot
+} Event;
+
+void event_log_init(void);
+
+// returns 0 on success, non-zero if log is full (oldest is preserved)
+int event_log_append(const Event *e);
+
+// returns 0 on success, non-zero if log is empty
+int event_log_pop(Event *out);
+
+// peek without removing; returns 0 on success, non-zero if empty
+int event_log_peek(Event *out);
+
+// number of events currently stored
+uint8_t event_log_size(void);
+
+#endif // EVENT_LOG_H
+event_log.c — implementation
+c
+// event_log.c
+#include "event_log.h"
+
+static Event event_buffer[EVENT_LOG_CAPACITY];
+static uint8_t head = 0;  // next write position
+static uint8_t tail = 0;  // next read position
+static uint8_t count = 0;
+
+void event_log_init(void) {
+    head = 0;
+    tail = 0;
+    count = 0;
+}
+
+int event_log_append(const Event *e) {
+    if (count >= EVENT_LOG_CAPACITY) {
+        // log full, do not overwrite oldest
+        return -1;
+    }
+
+    event_buffer[head] = *e;
+    head = (uint8_t)((head + 1) % EVENT_LOG_CAPACITY);
+    count++;
+    return 0;
+}
+
+int event_log_pop(Event *out) {
+    if (count == 0) {
+        return -1;
+    }
+
+    *out = event_buffer[tail];
+    tail = (uint8_t)((tail + 1) % EVENT_LOG_CAPACITY);
+    count--;
+    return 0;
+}
+
+int event_log_peek(Event *out) {
+    if (count == 0) {
+        return -1;
+    }
+
+    *out = event_buffer[tail];
+    return 0;
+}
+
+uint8_t event_log_size(void) {
+    return count;
+}

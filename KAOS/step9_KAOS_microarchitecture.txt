@@ -1,0 +1,190 @@
+KAOS micro‑architecture v0.1
+Let’s turn the ISA you just defined into a concrete little machine.
+
+At this level, KAOS is a tiny, single‑cycle, verb CPU:
+
+8‑bit opcodes (verbs)
+
+8‑bit arguments
+
+small state RAM
+
+simple IO + timer
+
+linear program memory
+
+Core components
+1. Program memory
+
+Width: 8 bits
+
+Contents: your KAOS program (sequence of [OPCODE, ARG0, ARG1])
+
+Addressed by: PC (program counter)
+
+Example (beacon mode):
+
+ADDR 0x00: 0x01 (PULSE)
+
+ADDR 0x01: 0x00 (machine 0)
+
+ADDR 0x02: 0x10 (duration 16)
+
+ADDR 0x03: 0x05 (WAIT)
+
+ADDR 0x04: 0x00
+
+ADDR 0x05: 0x64 (100 ms)
+
+ADDR 0x06: 0x07 (BRANCH_NE)
+
+ADDR 0x07: 0x00
+
+ADDR 0x08: 0x00
+
+2. Program counter (PC)
+
+Width: enough to address your program memory (e.g., 8–16 bits)
+
+Holds: address of current opcode
+
+Update rule: normally PC = PC + 3, unless a branch changes it
+
+3. Instruction register
+
+On each cycle:
+
+IR_opcode = MEM[PC]
+
+IR_arg0 = MEM[PC + 1]
+
+IR_arg1 = MEM[PC + 2]
+
+These three bytes feed the decoder.
+
+4. State RAM
+
+Array: state[0..N-1], each 8 bits
+
+Holds your state machines’ current states.
+
+Accessed by ARG0 (machine index).
+
+5. Decoder
+
+Combinational logic:
+
+Input: IR_opcode
+
+Output: control signals:
+
+do_pulse
+
+do_set_state
+
+do_report
+
+do_ack
+
+do_wait
+
+do_branch_eq
+
+do_branch_ne
+
+do_end
+
+This is literally a case on opcode in hardware.
+
+6. Execution unit
+
+Implements the micro‑ops:
+
+PULSE:
+
+io_out = 1
+
+timer_start(IR_arg1)
+
+SET_STATE:
+
+state[IR_arg0] = IR_arg1
+
+REPORT:
+
+uart_tx = state[IR_arg0]
+
+ACK:
+
+io_ack = 1
+
+WAIT:
+
+wait_counter = IR_arg1
+
+stall PC advance until counter reaches 0
+
+BRANCH_EQ / BRANCH_NE:
+
+read state[IR_arg0]
+
+compare to IR_arg1
+
+if condition true: PC_next = IR_arg0 (or some encoded address)
+
+else: PC_next = PC + 3
+
+END:
+
+halt = 1
+
+7. Timer / wait unit
+
+Simple down‑counter clocked by system clock.
+
+Used by PULSE and WAIT.
+
+Signals:
+
+timer_done
+
+pulse_active
+
+8. IO block
+
+Maps internal signals to pins / RF:
+
+io_out → RF / LED / pin
+
+io_ack → pin / RF pattern
+
+uart_tx → serial line
+
+Fetch–decode–execute in KAOS hardware
+On each cycle:
+
+Fetch:
+
+IR_opcode = MEM[PC]
+
+IR_arg0 = MEM[PC+1]
+
+IR_arg1 = MEM[PC+2]
+
+Decode:
+
+control = decode(IR_opcode)
+
+Execute:
+
+Perform micro‑ops based on control and IR_arg*
+
+Possibly update state[], IO, timers
+
+PC update:
+
+If branch taken: PC = branch_target
+
+Else if waiting: PC = PC (stall)
+
+Else: PC = PC + 3

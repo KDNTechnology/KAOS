@@ -1,0 +1,60 @@
+identity.h — overview
+Purpose:  
+Hold the device’s stable identity and role after configuration.
+Tiny, in‑RAM (optionally persisted later), globally readable.
+
+c
+// identity.h
+#ifndef IDENTITY_H
+#define IDENTITY_H
+
+#include <stdint.h>
+
+// Roles are small and finite; you can extend as needed.
+typedef enum {
+    ROLE_UNCONFIGURED = 0,
+    ROLE_BEACON       = 1,
+    ROLE_WEARABLE     = 2,
+    ROLE_GUARDIAN     = 3,
+    ROLE_BRIDGE       = 4
+} DeviceRole;
+
+void identity_init(void);
+
+// Set once during configuration loop
+void identity_set_role(DeviceRole role);
+void identity_set_id(uint32_t id);
+
+// Read anytime
+DeviceRole identity_get_role(void);
+uint32_t identity_get_id(void);
+
+#endif // IDENTITY_H
+identity.c — implementation
+c
+// identity.c
+#include "identity.h"
+
+static DeviceRole current_role = ROLE_UNCONFIGURED;
+static uint32_t current_id = 0;  // could be random, burned-in, or configured
+
+void identity_init(void) {
+    current_role = ROLE_UNCONFIGURED;
+    current_id = 0;
+}
+
+void identity_set_role(DeviceRole role) {
+    current_role = role;
+}
+
+void identity_set_id(uint32_t id) {
+    current_id = id;
+}
+
+DeviceRole identity_get_role(void) {
+    return current_role;
+}
+
+uint32_t identity_get_id(void) {
+    return current_id;
+}
